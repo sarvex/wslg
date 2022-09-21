@@ -134,7 +134,7 @@ int wslgd::ProcessMonitor::Run() try {
                             LOG_INFO("%s exited with status %d.", cmd.c_str(), WEXITSTATUS(status));
 
                         } else if (WIFSIGNALED(status)) {
-                           LOG_INFO("%s terminated with signal %d.", cmd.c_str(), WTERMSIG(status));
+                            LOG_INFO("%s terminated with signal %d.", cmd.c_str(), WTERMSIG(status));
                         }
 
                         auto& crashTimestamps = crashes[cmd];
