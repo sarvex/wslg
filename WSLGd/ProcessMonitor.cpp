@@ -92,6 +92,8 @@ int wslgd::ProcessMonitor::Run() try {
     wil::unique_fd signalFd{signalfd(-1, &SignalMask, SFD_CLOEXEC)};
     THROW_LAST_ERROR_IF(!signalFd);
 
+    std::map<std::string, std::vector<time_t>> crashes;
+
     // Begin monitoring loop.
     pollfd pollFd{signalFd.get(), POLLIN};
     for (;;) {
@@ -119,14 +121,32 @@ int wslgd::ProcessMonitor::Run() try {
                 if (found != m_children.end()) {
 
                     if (!found->second.argv.empty()) {
-                        if (WIFEXITED(status)) {
-                            LOG_INFO("%s exited with status %d.", found->second.argv[0].c_str(), WEXITSTATUS(status));
+                        std::string cmd;
+                        for (const auto& e: found->second.argv) {
+                            if (!cmd.empty()) {
+                                cmd += ' ';
+                            }
 
-                        } else if (WIFSIGNALED(status)) {
-                            LOG_INFO("%s terminated with signal %d.", found->second.argv[0].c_str(), WTERMSIG(status));
+                            cmd += e;
                         }
 
-                        LaunchProcess(std::move(found->second.argv), std::move(found->second.capabilities));
+                        if (WIFEXITED(status)) {
+                            LOG_INFO("%s exited with status %d.", cmd.c_str(), WEXITSTATUS(status));
+
+                        } else if (WIFSIGNALED(status)) {
+                           LOG_INFO("%s terminated with signal %d.", cmd.c_str(), WTERMSIG(status));
+                        }
+
+                        auto& crashTimestamps = crashes[cmd];
+                        auto now = time(nullptr);
+                        crashTimestamps.erase(std::remove_if(crashTimestamps.begin(), crashTimestamps.end(), [&](auto ts) { return ts < now - 60; }), crashTimestamps.end());
+                        crashTimestamps.emplace_back(now);
+
+                        if (crashTimestamps.size() > 10) {
+                            LOG_INFO("%s exited more than 10 times in 60 seconds, not starting it again", cmd.c_str());
+                        } else {
+                            LaunchProcess(std::move(found->second.argv), std::move(found->second.capabilities));
+                        }
                     }
 
                     m_children.erase(found);
